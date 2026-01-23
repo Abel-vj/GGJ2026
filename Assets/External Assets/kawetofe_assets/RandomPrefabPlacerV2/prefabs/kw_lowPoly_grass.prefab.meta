@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 4d3f596166e72d847bd4b59752bf46f6
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 100100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 146752
+  packageName: Random Prefab Placer - Version 2
+  packageVersion: 1.0.2
+  assetPath: Assets/kawetofe_assets/RandomPrefabPlacerV2/prefabs/kw_lowPoly_grass.prefab
+  uploadId: 423259
