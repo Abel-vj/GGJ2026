@@ -232,7 +232,7 @@ Material:
     - _OutlineTextureType: 0
     - _OutlineWidth: 2
     - _Parallax: 0.005
-    - _ProgressiveSketchSmoothness: 0.019
+    - _ProgressiveSketchSmoothness: 0.128
     - _QueueOffset: 0
     - _RampBands: 2
     - _RampBandsSmoothing: 0.1
