@@ -25,6 +25,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - TCP2_REFLECTIONS
   - TCP2_SKETCH
   - TCP2_UV_NORMALS_FULL
   - _ALPHAPREMULTIPLY_ON
@@ -56,7 +57,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     - _BaseMap:
         m_Texture: {fileID: 2800000, guid: 023597a194c90bc41aaf9bb24bb0e519, type: 3}
-        m_Scale: {x: 1, y: 1}
+        m_Scale: {x: 5, y: 5}
         m_Offset: {x: 0, y: 0}
     - _BumpMap:
         m_Texture: {fileID: 0}
@@ -83,7 +84,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FoamTex:
-        m_Texture: {fileID: 2800000, guid: 2f6e48026c6d24d4d8e7fc74722c663c, type: 3}
+        m_Texture: {fileID: 2800000, guid: 2a2d71ee416d3c844adfa1a053ea32f4, type: 3}
         m_Scale: {x: 50, y: 50}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
@@ -158,6 +159,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _SketchTexture:
+        m_Texture: {fileID: 2800000, guid: 7ce84a691ceda8444a6e82d3cbc88f79, type: 3}
+        m_Scale: {x: 1, y: 0.5}
+        m_Offset: {x: 0, y: 0}
     - _SpecGlossMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -175,6 +180,10 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Splat3:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _StylizedThreshold:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -204,10 +213,10 @@ Material:
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
     - _Cull: 2
-    - _Cutoff: 0.022
-    - _DepthAlphaDistance: 0.83
-    - _DepthAlphaMin: 0.841
-    - _DepthColorDistance: 0.81
+    - _Cutoff: 0
+    - _DepthAlphaDistance: 3.59
+    - _DepthAlphaMin: 0.691
+    - _DepthColorDistance: 1.77
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
     - _DirectIntensityOutline: 1
@@ -217,11 +226,11 @@ Material:
     - _EmissionChannel: 4
     - _EnableInstancedPerPixelNormal: 1
     - _EnvironmentReflections: 1
-    - _FoamSmoothness: 0.107
-    - _FoamSpread: 2.6
-    - _FoamStrength: 0.888
-    - _FresnelMax: 0.953
-    - _FresnelMin: 0.33
+    - _FoamSmoothness: 0.338
+    - _FoamSpread: 1.39
+    - _FoamStrength: 0.865
+    - _FresnelMax: 1.402
+    - _FresnelMin: 0.675
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
@@ -248,15 +257,16 @@ Material:
     - _OutlineTextureType: 0
     - _OutlineWidth: 2
     - _Parallax: 0.005
-    - _ProgressiveSketchSmoothness: 0.386
+    - _PlanarNormalsInfluence: 0
+    - _ProgressiveSketchSmoothness: 0.5
     - _QueueOffset: 0
     - _RampBands: 2
     - _RampBandsSmoothing: 0.1
     - _RampOffset: 0
     - _RampScale: 1
-    - _RampSmoothing: 0.369
+    - _RampSmoothing: 0.257
     - _RampSmoothing1: 0.001
-    - _RampThreshold: 0.694
+    - _RampThreshold: 0.551
     - _RampThreshold1: 0.811
     - _RampType: 2
     - _ReceiveShadows: 1
@@ -267,12 +277,17 @@ Material:
     - _RimMax: 0.809
     - _RimMin: 0.435
     - _ShadowColorLightAtten: 1
+    - _SineCount4: 4
     - _SingleIndirectColor: 0
+    - _SketchMax: 1
+    - _SketchMin: 0.243
+    - _SketchTexture_OffsetSpeed: 120
     - _Smoothness: 0.5
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SpecularMapType: 0
     - _SpecularRoughness: 0.2
+    - _SpecularRoughnessPBR: 0.127
     - _SpecularToonSize: 0.055
     - _SpecularToonSmoothness: 0.226
     - _SpecularType: 1
@@ -288,14 +303,15 @@ Material:
     - _UseNormalMap: 0
     - _UseOcclusion: 0
     - _UseOutline: 1
-    - _UseReflections: 0
+    - _UseReflections: 1
     - _UseRim: 0
     - _UseRimLightMask: 1
     - _UseShadowTexture: 0
     - _UseSketch: 1
     - _UseSpecular: 0
+    - _UseTexturedThreshold: 0
     - _UseVertexDisplacement: 0
-    - _WavesFrequency: 3
+    - _WavesFrequency: 10
     - _WavesHeight: 0.1
     - _WavesSpeed: 2
     - _WorkflowMode: 1
@@ -303,13 +319,13 @@ Material:
     - _ZWrite: 1
     - __dummy__: 0
     m_Colors:
-    - _BaseColor: {r: 0.9575472, g: 1, b: 0.9804494, a: 1}
+    - _BaseColor: {r: 0.9575471, g: 1, b: 0.9804494, a: 0.77254903}
     - _BaseColor1: {r: 1, g: 1, b: 1, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
-    - _DepthColor: {r: 1, g: 0, b: 0, a: 1}
+    - _DepthColor: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _FoamColor: {r: 1, g: 1, b: 1, a: 1}
-    - _FoamSpeed: {r: 2, g: 2, b: 2, a: 2}
+    - _FoamSpeed: {r: 1, g: 1, b: 1, a: 1}
     - _HColor: {r: 1, g: 1, b: 1, a: 1}
     - _HColor1: {r: 0.75, g: 0.75, b: 0.75, a: 1}
     - _MatCapColor: {r: 1, g: 1, b: 1, a: 1}
@@ -320,7 +336,7 @@ Material:
     - _SColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SColor1: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
-    - _SpecularColor: {r: 0.75, g: 0.75, b: 0.75, a: 1}
-    - _TriplanarSamplingStrength: {r: 8, g: 8, b: 8, a: 0.5}
+    - _SpecularColor: {r: 1, g: 1, b: 1, a: 1}
+    - _TriplanarSamplingStrength: {r: 8, g: 8, b: 8, a: 0.05}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

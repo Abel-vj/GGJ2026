@@ -24,6 +24,28 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 		
 		_RampThreshold ("Threshold", Range(0.01,1)) = 0.5
 		_RampSmoothing ("Smoothing", Range(0.001,1)) = 0.5
+		[IntRange] _BandsCount ("Bands Count", Range(1,20)) = 4
+		_BandsSmoothing ("Bands Smoothing", Range(0.001,1)) = 0.1
+		[TCP2Separator]
+		
+		[TCP2HeaderHelp(Specular)]
+		[TCP2ColorNoAlpha] _SpecularColor ("Specular Color", Color) = (0.5,0.5,0.5,1)
+		_SpecularRoughnessPBR ("Roughness", Range(0,1)) = 0.5
+		[TCP2Separator]
+
+		[TCP2HeaderHelp(Reflections)]
+		[Toggle(TCP2_REFLECTIONS)] _UseReflections ("Enable Reflections", Float) = 0
+		[TCP2ColorNoAlpha] _ReflectionColor ("Color", Color) = (1,1,1,1)
+		_PlanarNormalsInfluence ("Reflection Normal Influence", Range(0,1)) = 0.1
+		[HideInInspector] _ReflectionTex ("Planar Reflection RenderTexture", 2D) = "white" {}
+		_FresnelMin ("Fresnel Min", Range(0,2)) = 0
+		_FresnelMax ("Fresnel Max", Range(0,2)) = 1.5
+		[TCP2Separator]
+		
+		[TCP2HeaderHelp(Vertex Displacement)]
+		[Toggle(TCP2_VERTEX_DISPLACEMENT)] _UseVertexDisplacement ("Enable Vertex Displacement", Float) = 0
+		_DisplacementTex ("Displacement Texture", 2D) = "black" {}
+		 _DisplacementStrength ("Displacement Strength", Range(-1,1)) = 0.01
 		[TCP2Separator]
 		
 		[TCP2HeaderHelp(Normal Mapping)]
@@ -32,10 +54,16 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 		_BumpScale ("Scale", Float) = 1
 		[TCP2Separator]
 		
+		[Toggle(TCP2_TEXTURED_THRESHOLD)] _UseTexturedThreshold ("Enable Textured Threshold", Float) = 0
+		_StylizedThreshold ("Stylized Threshold", 2D) = "gray" {}
+		[TCP2Separator]
+		
 		[TCP2HeaderHelp(Sketch)]
 		[Toggle(TCP2_SKETCH)] _UseSketch ("Enable Sketch Effect", Float) = 0
-		_ProgressiveSketchTexture ("Progressive Texture", 2D) = "black" {}
-		_ProgressiveSketchSmoothness ("Progressive Smoothness", Range(0.005,0.5)) = 0.1
+		_SketchTexture ("Sketch Texture", 2D) = "black" {}
+		_SketchTexture_OffsetSpeed ("Sketch Texture UV Offset Speed", Float) = 120
+		_SketchMin ("Sketch Min", Range(0,1)) = 0
+		_SketchMax ("Sketch Max", Range(0,1)) = 1
 		[TCP2Separator]
 		
 		[TCP2HeaderHelp(Vertex Waves Animation)]
@@ -54,6 +82,7 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 		_FoamTex ("Foam Texture", 2D) = "black" {}
 		_FoamSpeed ("Foam Speed", Vector) = (2,2,2,2)
 		_FoamSmoothness ("Foam Smoothness", Range(0,0.5)) = 0.02
+		[HideInInspector] _SineCount4 ("4 Sine Functions", Float) = 4
 		
 		[TCP2HeaderHelp(Outline)]
 		_OutlineWidth ("Width", Range(0.1,4)) = 1
@@ -109,15 +138,20 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 		// Uniforms
 
 		// Shader Properties
+		TCP2_TEX2D_WITH_SAMPLER(_DisplacementTex);
 		TCP2_TEX2D_WITH_SAMPLER(_BumpMap);
 		TCP2_TEX2D_WITH_SAMPLER(_BaseMap);
 		TCP2_TEX2D_WITH_SAMPLER(_FoamTex);
-		TCP2_TEX2D_WITH_SAMPLER(_ProgressiveSketchTexture);
+		TCP2_TEX2D_WITH_SAMPLER(_StylizedThreshold);
+		TCP2_TEX2D_WITH_SAMPLER(_SketchTexture);
+		sampler2D _ReflectionTex;
 		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
 
 		CBUFFER_START(UnityPerMaterial)
 			
 			// Shader Properties
+			float4 _DisplacementTex_ST;
+			float _DisplacementStrength;
 			float _WavesFrequency;
 			float _WavesHeight;
 			float _WavesSpeed;
@@ -137,12 +171,23 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			float _FoamSmoothness;
 			float _DepthAlphaDistance;
 			float _DepthAlphaMin;
+			float4 _StylizedThreshold_ST;
 			float _RampThreshold;
 			float _RampSmoothing;
-			float4 _ProgressiveSketchTexture_ST;
-			float _ProgressiveSketchSmoothness;
+			float _BandsCount;
+			float _BandsSmoothing;
+			float _SpecularRoughnessPBR;
+			fixed4 _SpecularColor;
+			float4 _SketchTexture_ST;
+			half _SketchTexture_OffsetSpeed;
+			float _SketchMin;
+			float _SketchMax;
 			fixed4 _SColor;
 			fixed4 _HColor;
+			float _PlanarNormalsInfluence;
+			float _FresnelMin;
+			float _FresnelMax;
+			fixed4 _ReflectionColor;
 			float4 _TriplanarSamplingStrength;
 		CBUFFER_END
 
@@ -177,6 +222,40 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			return triplanar;
 		}
 		
+		// Hash without sin and uniform across platforms
+		// Adapted from: https://www.shadertoy.com/view/4djSRW (c) 2014 - Dave Hoskins - CC BY-SA 4.0 License
+		float2 hash22(float2 p)
+		{
+			float3 p3 = frac(p.xyx * float3(443.897, 441.423, 437.195));
+			p3 += dot(p3, p3.yzx + 19.19);
+			return frac((p3.xx+p3.yz)*p3.zy);
+		}
+		
+		//Specular help functions (from UnityStandardBRDF.cginc)
+		inline float3 SpecSafeNormalize(float3 inVec)
+		{
+			half dp3 = max(0.001f, dot(inVec, inVec));
+			return inVec * rsqrt(dp3);
+		}
+		
+			//PBR Blinn-Phong
+			#define TCP2_PI 3.14159265359
+			inline half PercRoughnessToSpecPower(half roughness)
+			{
+				half sq = max(1e-4f, roughness*roughness);
+				half n = (2.0 / sq) - 2.0;
+				n = max(n, 1e-4f);
+				return n;
+			}
+			inline half NDFBlinnPhong(half NdotH, half n)
+			{
+				// norm = (n+2)/(2*pi)
+				half normTerm = (n + 2.0) * (0.5/TCP2_PI);
+		
+				half specTerm = pow (NdotH, n);
+				return specTerm * normTerm;
+			}
+		
 		// Built-in renderer (CG) to SRP (HLSL) bindings
 		#define UnityObjectToClipPos TransformObjectToHClip
 		#define _WorldSpaceLightPos0 _MainLightPosition
@@ -190,9 +269,8 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 		{
 			float4 vertex : POSITION;
 			float3 normal : NORMAL;
-			#if TCP2_UV1_AS_NORMALS
 			float4 texcoord0 : TEXCOORD0;
-		#elif TCP2_UV2_AS_NORMALS
+			#if TCP2_UV2_AS_NORMALS
 			float4 texcoord1 : TEXCOORD1;
 		#elif TCP2_UV3_AS_NORMALS
 			float4 texcoord2 : TEXCOORD2;
@@ -211,6 +289,8 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			float4 vertex : SV_POSITION;
 			float4 screenPosition : TEXCOORD0;
 			float4 vcolor : TEXCOORD1;
+			float3 pack2 : TEXCOORD2; /* pack2.xyz = worldPos */
+			float3 pack3 : TEXCOORD3; /* pack3.xyz = worldNormal */
 			UNITY_VERTEX_INPUT_INSTANCE_ID
 			UNITY_VERTEX_OUTPUT_STEREO
 		};
@@ -223,22 +303,42 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			UNITY_TRANSFER_INSTANCE_ID(v, output);
 			UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 
+			float3 worldNormalUv = mul(UNITY_MATRIX_M, float4(v.normal, 1.0)).xyz;
 			// Shader Properties Sampling
+			float3 __vertexDisplacement = ( v.normal.xyz * TCP2_TEX2D_SAMPLE_LOD(_DisplacementTex, _DisplacementTex, v.texcoord0.xy * _DisplacementTex_ST.xy + _DisplacementTex_ST.zw, 0).rgb * _DisplacementStrength );
 			float __wavesFrequency = ( _WavesFrequency );
 			float __wavesHeight = ( _WavesHeight );
 			float __wavesSpeed = ( _WavesSpeed );
+			float4 __wavesSinOffsets1 = ( float4(1,2.2,0.6,1.3) );
+			float4 __wavesPhaseOffsets1 = ( float4(1,1.3,2.2,0.4) );
+			float4 __wavesSinOffsets2 = ( float4(0.6,1.3,3.1,2.4) );
+			float4 __wavesPhaseOffsets2 = ( float4(2.2,0.4,3.3,2.9) );
 			float __outlineWidth = ( _OutlineWidth );
 			float4 __outlineColorVertex = ( _OutlineColorVertex.rgba );
 
+			#if defined(TCP2_VERTEX_DISPLACEMENT)
+			v.vertex.xyz += __vertexDisplacement;
+			#endif
+			float3 worldPos = mul(UNITY_MATRIX_M, v.vertex).xyz;
+			
 			// Vertex water waves
 			float _waveFrequency = __wavesFrequency;
 			float _waveHeight = __wavesHeight;
 			float3 _vertexWavePos = v.vertex.xyz * _waveFrequency;
 			float _phase = _Time.y * __wavesSpeed;
-			float waveFactorX = sin(_vertexWavePos.x + _phase) * _waveHeight;
-			float waveFactorZ = sin(_vertexWavePos.z + _phase) * _waveHeight;
+			half4 vsw_offsets_x = __wavesSinOffsets1;
+			half4 vsw_ph_offsets_x = __wavesPhaseOffsets1;
+			half4 vsw_offsets_z = __wavesSinOffsets2;
+			half4 vsw_ph_offsets_z = __wavesPhaseOffsets2;
+			half4 waveX = sin((_vertexWavePos.xxxx * vsw_offsets_x) + (_phase.xxxx * vsw_ph_offsets_x));
+			half4 waveZ = sin((_vertexWavePos.zzzz * vsw_offsets_z) + (_phase.xxxx * vsw_ph_offsets_z));
+			float waveFactorX = dot(waveX.xyzw, 1) * _waveHeight / 4;
+			float waveFactorZ = dot(waveZ.xyzw, 1) * _waveHeight / 4;
 			v.vertex.y += (waveFactorX + waveFactorZ);
 			
+			output.pack2.xyz = worldPos;
+			output.pack3.xyz = worldNormalUv;
+		
 		#ifdef TCP2_COLORS_AS_NORMALS
 			//Vertex Color for Normals
 			float3 normal = (v.vertexColor.xyz*2) - 1;
@@ -312,6 +412,9 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			UNITY_SETUP_INSTANCE_ID(input);
 			UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
+			float3 positionWS = input.pack2.xyz;
+			float3 normalWS = input.pack2.xyz;
+
 			// Shader Properties Sampling
 			float4 __outlineColor = ( float4(1,1,1,1) );
 
@@ -367,9 +470,12 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 
 			//--------------------------------------
 			// Toony Colors Pro 2 keywords
+			#pragma shader_feature_local_vertex TCP2_VERTEX_DISPLACEMENT
+			#pragma shader_feature_local_fragment TCP2_REFLECTIONS
 		#pragma shader_feature_local _ _ALPHAPREMULTIPLY_ON
 			#pragma shader_feature_local _NORMALMAP
 			#pragma shader_feature_local_fragment TCP2_SKETCH
+			#pragma shader_feature_local_fragment TCP2_TEXTURED_THRESHOLD
 
 			// vertex input
 			struct Attributes
@@ -421,10 +527,18 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				// Texture Coordinates
 				output.pack3.xy.xy = input.texcoord0.xy * _BaseMap_ST.xy + _BaseMap_ST.zw;
 				// Shader Properties Sampling
+				float3 __vertexDisplacement = ( input.normal.xyz * TCP2_TEX2D_SAMPLE_LOD(_DisplacementTex, _DisplacementTex, output.pack3.xy * _DisplacementTex_ST.xy + _DisplacementTex_ST.zw, 0).rgb * _DisplacementStrength );
 				float __wavesFrequency = ( _WavesFrequency );
 				float __wavesHeight = ( _WavesHeight );
 				float __wavesSpeed = ( _WavesSpeed );
+				float4 __wavesSinOffsets1 = ( float4(1,2.2,0.6,1.3) );
+				float4 __wavesPhaseOffsets1 = ( float4(1,1.3,2.2,0.4) );
+				float4 __wavesSinOffsets2 = ( float4(0.6,1.3,3.1,2.4) );
+				float4 __wavesPhaseOffsets2 = ( float4(2.2,0.4,3.3,2.9) );
 
+				#if defined(TCP2_VERTEX_DISPLACEMENT)
+				input.vertex.xyz += __vertexDisplacement;
+				#endif
 				float3 worldPos = mul(UNITY_MATRIX_M, input.vertex).xyz;
 				
 				// Vertex water waves
@@ -432,8 +546,14 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				float _waveHeight = __wavesHeight;
 				float3 _vertexWavePos = input.vertex.xyz * _waveFrequency;
 				float _phase = _Time.y * __wavesSpeed;
-				float waveFactorX = sin(_vertexWavePos.x + _phase) * _waveHeight;
-				float waveFactorZ = sin(_vertexWavePos.z + _phase) * _waveHeight;
+				half4 vsw_offsets_x = __wavesSinOffsets1;
+				half4 vsw_ph_offsets_x = __wavesPhaseOffsets1;
+				half4 vsw_offsets_z = __wavesSinOffsets2;
+				half4 vsw_ph_offsets_z = __wavesPhaseOffsets2;
+				half4 waveX = sin((_vertexWavePos.xxxx * vsw_offsets_x) + (_phase.xxxx * vsw_ph_offsets_x));
+				half4 waveZ = sin((_vertexWavePos.zzzz * vsw_offsets_z) + (_phase.xxxx * vsw_ph_offsets_z));
+				float waveFactorX = dot(waveX.xyzw, 1) * _waveHeight / 4;
+				float waveFactorZ = dot(waveZ.xyzw, 1) * _waveHeight / 4;
 				input.vertex.y += (waveFactorX + waveFactorZ);
 				
 				VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
@@ -475,6 +595,7 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 
 				float3 positionWS = input.worldPosAndFog.xyz;
 				float3 normalWS = normalize(input.normal);
+				half3 viewDirWS = GetWorldSpaceNormalizeViewDir(positionWS);
 				half3 tangentWS = input.pack1.xyz;
 				half3 bitangentWS = input.pack2.xyz;
 				#if defined(_NORMALMAP)
@@ -500,12 +621,26 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				float __depthAlphaDistance = ( _DepthAlphaDistance );
 				float __depthAlphaMin = ( _DepthAlphaMin );
 				float __ambientIntensity = ( 1.0 );
+				float __stylizedThreshold = ( TCP2_TEX2D_SAMPLE(_StylizedThreshold, _StylizedThreshold, input.pack3.xy * _StylizedThreshold_ST.xy + _StylizedThreshold_ST.zw).a );
+				float __stylizedThresholdScale = ( 1.0 );
 				float __rampThreshold = ( _RampThreshold );
 				float __rampSmoothing = ( _RampSmoothing );
-				float4 __progressiveSketchTexture = ( TCP2_TEX2D_SAMPLE_TRIPLANAR(_ProgressiveSketchTexture, _ProgressiveSketchTexture, float4(1, 1, 1, 1) * _ProgressiveSketchTexture_ST, positionWS, normalWS).rgba );
-				float __progressiveSketchSmoothness = ( _ProgressiveSketchSmoothness );
+				float __bandsCount = ( _BandsCount );
+				float __bandsSmoothing = ( _BandsSmoothing );
+				float __specularRoughnessPbr = ( _SpecularRoughnessPBR );
+				float3 __specularColor = ( _SpecularColor.rgb );
+				float3 __sketchTexture = ( TCP2_TEX2D_SAMPLE_TRIPLANAR(_SketchTexture, _SketchTexture, float4(float2(1, 1) * _SketchTexture_ST.xy, _SketchTexture_ST.zw + hash22(floor(_Time.xx * _SketchTexture_OffsetSpeed.xx) / _SketchTexture_OffsetSpeed.xx)), positionWS, normalWS).aaa );
+				float __sketchAntialiasing = ( 20.0 );
+				float __sketchThresholdScale = ( 1.0 );
+				float __sketchMin = ( _SketchMin );
+				float __sketchMax = ( _SketchMax );
 				float3 __shadowColor = ( _SColor.rgb );
 				float3 __highlightColor = ( _HColor.rgb );
+				float3 __sketchColor = ( float3(0,0,0) );
+				float __planarNormalsInfluence = ( _PlanarNormalsInfluence );
+				float __fresnelMin = ( _FresnelMin );
+				float __fresnelMax = ( _FresnelMax );
+				float3 __reflectionColor = ( _ReflectionColor.rgb );
 
 				#if defined(_NORMALMAP)
 				half4 normalMap = __normalMap;
@@ -514,6 +649,9 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				normalWS = normalize( mul(normalTS, tangentToWorldMatrix) );
 					#endif
 				#endif
+
+				half ndv = abs(dot(viewDirWS, normalWS));
+				half ndvRaw = ndv;
 
 				// Sample depth texture and calculate difference with local depth
 				float sceneDepth = SampleSceneDepth(input.screenPosition.xyzw.xy / input.screenPosition.xyzw.w);
@@ -617,12 +755,22 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				half atten = mainLight.shadowAttenuation * mainLight.distanceAttenuation;
 
 				half ndl = dot(normalWS, lightDir);
+				#if defined(TCP2_TEXTURED_THRESHOLD)
+				float stylizedThreshold = __stylizedThreshold;
+				stylizedThreshold -= 0.5;
+				stylizedThreshold *= __stylizedThresholdScale;
+				ndl += stylizedThreshold;
+				#endif
 				half3 ramp;
 				
 				half rampThreshold = __rampThreshold;
 				half rampSmooth = __rampSmoothing * 0.5;
+				half bandsCount = __bandsCount;
+				half bandsSmoothing = __bandsSmoothing;
 				ndl = saturate(ndl);
-				ramp = smoothstep(rampThreshold - rampSmooth, rampThreshold + rampSmooth, ndl);
+				half bandsNdl = smoothstep(rampThreshold - rampSmooth, rampThreshold + rampSmooth, ndl);
+				half bandsSmooth = bandsSmoothing * 0.5;
+				ramp = saturate((smoothstep(0.5 - bandsSmooth, 0.5 + bandsSmooth, frac(bandsNdl * bandsCount)) + floor(bandsNdl * bandsCount)) / bandsCount).xxx;
 
 				// apply attenuation
 				ramp *= atten;
@@ -630,6 +778,17 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				half3 color = half3(0,0,0);
 				half3 accumulatedRamp = ramp * max(lightColor.r, max(lightColor.g, lightColor.b));
 				half3 accumulatedColors = ramp * lightColor.rgb;
+
+				half3 halfDir = SpecSafeNormalize(float3(lightDir) + float3(viewDirWS));
+				
+				//Specular: PBR Blinn-Phong
+				half roughness = __specularRoughnessPbr*__specularRoughnessPbr;
+				half nh = saturate(dot(normalWS, halfDir));
+				half spec = NDFBlinnPhong(nh, PercRoughnessToSpecPower(roughness));
+				spec *= atten;
+				
+				//Apply specular
+				emission.rgb += spec * lightColor.rgb * __specularColor;
 
 				// Additional lights loop
 			#ifdef _ADDITIONAL_LIGHTS
@@ -663,10 +822,18 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 							#endif
 
 							half ndl = dot(normalWS, lightDir);
+							#if defined(TCP2_TEXTURED_THRESHOLD)
+							float stylizedThreshold = __stylizedThreshold;
+							stylizedThreshold -= 0.5;
+							stylizedThreshold *= __stylizedThresholdScale;
+							ndl += stylizedThreshold;
+							#endif
 							half3 ramp;
 							
 							ndl = saturate(ndl);
-							ramp = smoothstep(rampThreshold - rampSmooth, rampThreshold + rampSmooth, ndl);
+							half bandsNdl = smoothstep(rampThreshold - rampSmooth, rampThreshold + rampSmooth, ndl);
+							half bandsSmooth = bandsSmoothing * 0.5;
+							ramp = saturate((smoothstep(0.5 - bandsSmooth, 0.5 + bandsSmooth, frac(bandsNdl * bandsCount)) + floor(bandsNdl * bandsCount)) / bandsCount).xxx;
 
 							// apply attenuation (shadowmaps & point/spot lights attenuation)
 							ramp *= atten;
@@ -674,6 +841,16 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 							accumulatedRamp += ramp * max(lightColor.r, max(lightColor.g, lightColor.b));
 							accumulatedColors += ramp * lightColor.rgb;
 
+							half3 halfDir = SpecSafeNormalize(float3(lightDir) + float3(viewDirWS));
+							
+							//Specular: PBR Blinn-Phong
+							half roughness = __specularRoughnessPbr*__specularRoughnessPbr;
+							half nh = saturate(dot(normalWS, halfDir));
+							half spec = NDFBlinnPhong(nh, PercRoughnessToSpecPower(roughness));
+							spec *= atten;
+							
+							//Apply specular
+							emission.rgb += spec * lightColor.rgb * __specularColor;
 						}
 					}
 
@@ -706,10 +883,18 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 					#endif
 
 					half ndl = dot(normalWS, lightDir);
+					#if defined(TCP2_TEXTURED_THRESHOLD)
+					float stylizedThreshold = __stylizedThreshold;
+					stylizedThreshold -= 0.5;
+					stylizedThreshold *= __stylizedThresholdScale;
+					ndl += stylizedThreshold;
+					#endif
 					half3 ramp;
 					
 					ndl = saturate(ndl);
-					ramp = smoothstep(rampThreshold - rampSmooth, rampThreshold + rampSmooth, ndl);
+					half bandsNdl = smoothstep(rampThreshold - rampSmooth, rampThreshold + rampSmooth, ndl);
+					half bandsSmooth = bandsSmoothing * 0.5;
+					ramp = saturate((smoothstep(0.5 - bandsSmooth, 0.5 + bandsSmooth, frac(bandsNdl * bandsCount)) + floor(bandsNdl * bandsCount)) / bandsCount).xxx;
 
 					// apply attenuation (shadowmaps & point/spot lights attenuation)
 					ramp *= atten;
@@ -717,6 +902,16 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 					accumulatedRamp += ramp * max(lightColor.r, max(lightColor.g, lightColor.b));
 					accumulatedColors += ramp * lightColor.rgb;
 
+					half3 halfDir = SpecSafeNormalize(float3(lightDir) + float3(viewDirWS));
+					
+					//Specular: PBR Blinn-Phong
+					half roughness = __specularRoughnessPbr*__specularRoughnessPbr;
+					half nh = saturate(dot(normalWS, halfDir));
+					half spec = NDFBlinnPhong(nh, PercRoughnessToSpecPower(roughness));
+					spec *= atten;
+					
+					//Apply specular
+					emission.rgb += spec * lightColor.rgb * __specularColor;
 				}
 				LIGHT_LOOP_END
 			#endif
@@ -728,22 +923,15 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				
 				// Sketch
 				#if defined(TCP2_SKETCH)
-				half4 sketch = __progressiveSketchTexture;
-				half4 sketchWeights = half4(0,0,0,0);
-				half sketchStep = 1.0 / 5.0;
-				half sketchSmooth = __progressiveSketchSmoothness;
-				sketchWeights.a = smoothstep(sketchStep + sketchSmooth, sketchStep - sketchSmooth, accumulatedRamp);
-				sketchWeights.b = smoothstep(sketchStep*2 + sketchSmooth, sketchStep*2 - sketchSmooth, accumulatedRamp) - sketchWeights.a;
-				sketchWeights.g = smoothstep(sketchStep*3 + sketchSmooth, sketchStep*3 - sketchSmooth, accumulatedRamp) - sketchWeights.a - sketchWeights.b;
-				sketchWeights.r = smoothstep(sketchStep*4 + sketchSmooth, sketchStep*4 - sketchSmooth, accumulatedRamp) - sketchWeights.a - sketchWeights.b - sketchWeights.g;
-				half combinedSketch = 1.0 - dot(sketch, sketchWeights);
-				
+				half3 sketch = __sketchTexture;
+				half sketchThresholdWidth = __sketchAntialiasing * fwidth(ndl);
+				sketch = smoothstep(sketch - sketchThresholdWidth, sketch, clamp(saturate(accumulatedRamp * __sketchThresholdScale), __sketchMin, __sketchMax));
 				#endif
 				half3 shadowColor = (1 - accumulatedRamp.rgb) * __shadowColor;
 				accumulatedRamp = accumulatedColors.rgb * __highlightColor + shadowColor;
 				color += albedo * accumulatedRamp;
 				#if defined(TCP2_SKETCH)
-				color.rgb *= combinedSketch;
+				color.rgb *= lerp(__sketchColor, half3(1,1,1), sketch.rgb);
 				#endif
 
 				// apply ambient
@@ -753,6 +941,22 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				#if defined(_ALPHAPREMULTIPLY_ON)
 					color.rgb *= alpha;
 				#endif
+
+				half3 reflections = half3(0, 0, 0);
+				#if defined(TCP2_REFLECTIONS)
+				#if defined(_NORMALMAP)
+				float2 planarReflectionCoords = (input.screenPosition.xyzw.xy + (normalTS.xy * __planarNormalsInfluence)) / input.screenPosition.xyzw.w;
+				reflections.rgb += tex2D(_ReflectionTex, planarReflectionCoords).rgb;
+				#else
+				reflections.rgb += tex2D(_ReflectionTex, input.screenPosition.xyzw.xy / input.screenPosition.xyzw.w).rgb;
+				#endif
+				#endif
+				half fresnelMin = __fresnelMin;
+				half fresnelMax = __fresnelMax;
+				half fresnelTerm = smoothstep(fresnelMin, fresnelMax, 1 - ndvRaw);
+				reflections *= fresnelTerm;
+				reflections *= __reflectionColor;
+				color.rgb += reflections;
 
 				color += emission;
 
@@ -782,6 +986,10 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			#pragma multi_compile _ TCP2_UV_NORMALS_FULL TCP2_UV_NORMALS_ZW
 			#pragma multi_compile_instancing
 
+			//--------------------------------------
+			// Toony Colors Pro 2 keywords
+			#pragma shader_feature_local_vertex TCP2_VERTEX_DISPLACEMENT
+
 			ENDHLSL
 		}
 		// Depth & Shadow Caster Passes
@@ -808,11 +1016,13 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			struct Varyings
 			{
 				float4 positionCS     : SV_POSITION;
+				float3 normal         : NORMAL;
 			#if defined(DEPTH_NORMALS_PASS)
 				float3 normalWS : TEXCOORD0;
 			#endif
 				float4 screenPosition : TEXCOORD1;
-				float2 pack1 : TEXCOORD2; /* pack1.xy = texcoord0 */
+				float3 pack1 : TEXCOORD2; /* pack1.xyz = positionWS */
+				float2 pack2 : TEXCOORD3; /* pack2.xy = texcoord0 */
 			#if defined(DEPTH_ONLY_PASS)
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 				UNITY_VERTEX_OUTPUT_STEREO
@@ -848,20 +1058,38 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 					UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
 				#endif
 
+				float3 worldNormalUv = mul(UNITY_MATRIX_M, float4(input.normal, 1.0)).xyz;
+
 				// Texture Coordinates
-				output.pack1.xy.xy = input.texcoord0.xy * _BaseMap_ST.xy + _BaseMap_ST.zw;
+				output.pack2.xy.xy = input.texcoord0.xy * _BaseMap_ST.xy + _BaseMap_ST.zw;
 				// Shader Properties Sampling
+				float3 __vertexDisplacement = ( input.normal.xyz * TCP2_TEX2D_SAMPLE_LOD(_DisplacementTex, _DisplacementTex, output.pack2.xy * _DisplacementTex_ST.xy + _DisplacementTex_ST.zw, 0).rgb * _DisplacementStrength );
 				float __wavesFrequency = ( _WavesFrequency );
 				float __wavesHeight = ( _WavesHeight );
 				float __wavesSpeed = ( _WavesSpeed );
+				float4 __wavesSinOffsets1 = ( float4(1,2.2,0.6,1.3) );
+				float4 __wavesPhaseOffsets1 = ( float4(1,1.3,2.2,0.4) );
+				float4 __wavesSinOffsets2 = ( float4(0.6,1.3,3.1,2.4) );
+				float4 __wavesPhaseOffsets2 = ( float4(2.2,0.4,3.3,2.9) );
 
+				#if defined(TCP2_VERTEX_DISPLACEMENT)
+				input.vertex.xyz += __vertexDisplacement;
+				#endif
+				float3 worldPos = mul(UNITY_MATRIX_M, input.vertex).xyz;
+				
 				// Vertex water waves
 				float _waveFrequency = __wavesFrequency;
 				float _waveHeight = __wavesHeight;
 				float3 _vertexWavePos = input.vertex.xyz * _waveFrequency;
 				float _phase = _Time.y * __wavesSpeed;
-				float waveFactorX = sin(_vertexWavePos.x + _phase) * _waveHeight;
-				float waveFactorZ = sin(_vertexWavePos.z + _phase) * _waveHeight;
+				half4 vsw_offsets_x = __wavesSinOffsets1;
+				half4 vsw_ph_offsets_x = __wavesPhaseOffsets1;
+				half4 vsw_offsets_z = __wavesSinOffsets2;
+				half4 vsw_ph_offsets_z = __wavesPhaseOffsets2;
+				half4 waveX = sin((_vertexWavePos.xxxx * vsw_offsets_x) + (_phase.xxxx * vsw_ph_offsets_x));
+				half4 waveZ = sin((_vertexWavePos.zzzz * vsw_offsets_z) + (_phase.xxxx * vsw_ph_offsets_z));
+				float waveFactorX = dot(waveX.xyzw, 1) * _waveHeight / 4;
+				float waveFactorZ = dot(waveZ.xyzw, 1) * _waveHeight / 4;
 				input.vertex.y += (waveFactorX + waveFactorZ);
 				
 				VertexPositionInputs vertexInput = GetVertexPositionInputs(input.vertex.xyz);
@@ -869,6 +1097,8 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 				// Screen Space UV
 				float4 screenPos = ComputeScreenPos(vertexInput.positionCS);
 				output.screenPosition.xyzw = screenPos;
+				output.normal = normalize(worldNormalUv);
+				output.pack1.xyz = vertexInput.positionWS;
 
 				#if defined(DEPTH_ONLY_PASS)
 					output.positionCS = TransformObjectToHClip(input.vertex.xyz);
@@ -900,11 +1130,18 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 					UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 				#endif
 
+				float3 positionWS = input.pack1.xyz;
+				float3 normalWS = normalize(input.normal);
+
 				// Shader Properties Sampling
-				float4 __albedo = ( TCP2_TEX2D_SAMPLE(_BaseMap, _BaseMap, input.pack1.xy).rgba );
+				float4 __albedo = ( TCP2_TEX2D_SAMPLE(_BaseMap, _BaseMap, input.pack2.xy).rgba );
 				float4 __mainColor = ( _BaseColor.rgba );
 				float __alpha = ( __albedo.a * __mainColor.a );
 				float __cutoff = ( _Cutoff );
+
+				half3 viewDirWS = GetWorldSpaceNormalizeViewDir(positionWS);
+				half ndv = abs(dot(viewDirWS, normalWS));
+				half ndvRaw = ndv;
 
 				half3 albedo = half3(1,1,1);
 				half alpha = __alpha;
@@ -963,6 +1200,10 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			#pragma vertex ShadowDepthPassVertex
 			#pragma fragment ShadowDepthPassFragment
 
+			//--------------------------------------
+			// Toony Colors Pro 2 keywords
+			#pragma shader_feature_local_vertex TCP2_VERTEX_DISPLACEMENT
+
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
 
@@ -992,6 +1233,10 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			#pragma vertex ShadowDepthPassVertex
 			#pragma fragment ShadowDepthPassFragment
 
+			//--------------------------------------
+			// Toony Colors Pro 2 keywords
+			#pragma shader_feature_local_vertex TCP2_VERTEX_DISPLACEMENT
+
 			ENDHLSL
 		}
 
@@ -1015,6 +1260,10 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 
 			#pragma vertex ShadowDepthPassVertex
 			#pragma fragment SceneSelectionFragment
+
+			//--------------------------------------
+			// Toony Colors Pro 2 keywords
+			#pragma shader_feature_local_vertex TCP2_VERTEX_DISPLACEMENT
 
 			int _ObjectId;
 			int _PassValue;
@@ -1048,6 +1297,10 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 			#pragma vertex ShadowDepthPassVertex
 			#pragma fragment ScenePickingFragment
 
+			//--------------------------------------
+			// Toony Colors Pro 2 keywords
+			#pragma shader_feature_local_vertex TCP2_VERTEX_DISPLACEMENT
+
 			float4 _SelectionID;
 
 			half4 ScenePickingFragment(Varyings input) : SV_Target
@@ -1064,5 +1317,5 @@ Shader "Toony Colors Pro 2/User/Water_Shader"
 	CustomEditor "ToonyColorsPro.ShaderGenerator.MaterialInspector_SG2"
 }
 
-/* TCP_DATA u config(ver:"2.9.21";unity:"6000.3.4f1";tmplt:"SG2_Template_URP";features:list["UNITY_5_4","UNITY_5_5","UNITY_5_6","UNITY_2017_1","UNITY_2018_1","UNITY_2018_2","UNITY_2018_3","UNITY_2019_1","UNITY_2019_2","UNITY_2019_3","UNITY_2019_4","UNITY_2020_1","UNITY_2021_1","UNITY_2021_2","UNITY_2022_2","UNITY_6000_2","UNITY_6000_1","UNITY_6000_0","ENABLE_DEPTH_NORMALS_PASS","ENABLE_FORWARD_PLUS","BUMP","BUMP_SCALE","BUMP_SHADER_FEATURE","VERTEX_SIN_WAVES","DEPTH_BUFFER_COLOR","DEPTH_BUFFER_FOAM","FOAM_ANIM","SMOOTH_FOAM","DEPTH_BUFFER_ALPHA","SKETCH_PROGRESSIVE","SKETCH_PROGRESSIVE_SMOOTH","SKETCH_SHADER_FEATURE","OUTLINE","OUTLINE_URP_FEATURE","AUTO_TRANSPARENT_BLENDING","ALPHA_TESTING","TEMPLATE_LWRP"];flags:list[];flags_extra:dict[];keywords:dict[RENDER_TYPE="TransparentCutout",RampTextureDrawer="[TCP2Gradient]",RampTextureLabel="Ramp Texture",SHADER_TARGET="3.0"];shaderProperties:list[,,,,,,,,,,,sp(name:"Progressive Sketch Texture";imps:list[imp_mp_texture(uto:True;tov:"";tov_lbl:"";gto:False;sbt:False;scr:False;scv:"";scv_lbl:"";gsc:False;roff:False;goff:False;sin_anm:False;sin_anmv:"";sin_anmv_lbl:"";gsin:False;notile:False;triplanar_local:False;def:"black";locked_uv:False;uv:6;cc:4;chan:"RGBA";mip:-1;mipprop:False;ssuv_vert:False;ssuv_obj:False;uv_type:Triplanar;uv_chan:"XZ";tpln_scale:1;uv_shaderproperty:__NULL__;uv_cmp:__NULL__;sep_sampler:__NULL__;prop:"_ProgressiveSketchTexture";md:"";gbv:False;custom:False;refs:"";pnlock:False;guid:"395314d5-5ee5-4efe-b37c-f1ab4ef2393b";op:Multiply;lbl:"Progressive Texture";gpu_inst:False;dots_inst:False;locked:False;impl_index:0)];layers:list[];unlocked:list[];layer_blend:dict[];custom_blend:dict[];clones:dict[];isClone:False)];customTextures:list[];codeInjection:codeInjection(injectedFiles:list[];mark:False);matLayers:list[]) */
-/* TCP_HASH cfff50bbc8c0fedbea7f19f4bd729201 */
+/* TCP_DATA u config(ver:"2.9.21";unity:"6000.3.4f1";tmplt:"SG2_Template_URP";features:list["UNITY_5_4","UNITY_5_5","UNITY_5_6","UNITY_2017_1","UNITY_2018_1","UNITY_2018_2","UNITY_2018_3","UNITY_2019_1","UNITY_2019_2","UNITY_2019_3","UNITY_2019_4","UNITY_2020_1","UNITY_2021_1","UNITY_2021_2","UNITY_2022_2","UNITY_6000_2","UNITY_6000_1","UNITY_6000_0","ENABLE_DEPTH_NORMALS_PASS","ENABLE_FORWARD_PLUS","BUMP","BUMP_SCALE","BUMP_SHADER_FEATURE","VERTEX_SIN_WAVES","DEPTH_BUFFER_COLOR","DEPTH_BUFFER_FOAM","FOAM_ANIM","SMOOTH_FOAM","DEPTH_BUFFER_ALPHA","SKETCH_PROGRESSIVE_SMOOTH","SKETCH_SHADER_FEATURE","OUTLINE","OUTLINE_URP_FEATURE","AUTO_TRANSPARENT_BLENDING","ALPHA_TESTING","RAMP_BANDS","SPEC_PBR_BLINNPHONG","SPECULAR","PLANAR_REFLECTION","REFLECTION_SHADER_FEATURE","REFLECTION_FRESNEL","VERTEX_DISPLACEMENT","VERTEX_DISP_SHADER_FEATURE","TEXTURED_THRESHOLD","TT_SHADER_FEATURE","SKETCH_GRADIENT","VSW_4","TEMPLATE_LWRP"];flags:list[];flags_extra:dict[];keywords:dict[RENDER_TYPE="TransparentCutout",RampTextureDrawer="[TCP2Gradient]",RampTextureLabel="Ramp Texture",SHADER_TARGET="3.0"];shaderProperties:list[,,,,,,,,,,,,,,,,,,,,,,sp(name:"Sketch Texture";imps:list[imp_mp_texture(uto:True;tov:"";tov_lbl:"";gto:False;sbt:False;scr:False;scv:"";scv_lbl:"";gsc:False;roff:True;goff:False;sin_anm:False;sin_anmv:"";sin_anmv_lbl:"";gsin:False;notile:False;triplanar_local:False;def:"black";locked_uv:False;uv:6;cc:3;chan:"AAA";mip:-1;mipprop:False;ssuv_vert:False;ssuv_obj:False;uv_type:Triplanar;uv_chan:"XZ";tpln_scale:1;uv_shaderproperty:__NULL__;uv_cmp:__NULL__;sep_sampler:__NULL__;prop:"_SketchTexture";md:"";gbv:False;custom:False;refs:"";pnlock:False;guid:"4711c527-7d1e-4f7b-acca-2f39c72251de";op:Multiply;lbl:"Sketch Texture";gpu_inst:False;dots_inst:False;locked:False;impl_index:0)];layers:list[];unlocked:list[];layer_blend:dict[];custom_blend:dict[];clones:dict[];isClone:False),,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,sp(name:"Progressive Sketch Texture";imps:list[imp_mp_texture(uto:True;tov:"";tov_lbl:"";gto:False;sbt:False;scr:False;scv:"";scv_lbl:"";gsc:False;roff:False;goff:False;sin_anm:False;sin_anmv:"";sin_anmv_lbl:"";gsin:False;notile:False;triplanar_local:False;def:"black";locked_uv:False;uv:6;cc:4;chan:"RGBA";mip:-1;mipprop:False;ssuv_vert:False;ssuv_obj:False;uv_type:Triplanar;uv_chan:"XZ";tpln_scale:1;uv_shaderproperty:__NULL__;uv_cmp:__NULL__;sep_sampler:__NULL__;prop:"_ProgressiveSketchTexture";md:"";gbv:False;custom:False;refs:"";pnlock:False;guid:"395314d5-5ee5-4efe-b37c-f1ab4ef2393b";op:Multiply;lbl:"Progressive Texture";gpu_inst:False;dots_inst:False;locked:False;impl_index:0)];layers:list[];unlocked:list[];layer_blend:dict[];custom_blend:dict[];clones:dict[];isClone:False)];customTextures:list[];codeInjection:codeInjection(injectedFiles:list[];mark:False);matLayers:list[]) */
+/* TCP_HASH 3ba17d8753dbb86de66c4fc646b560f5 */
