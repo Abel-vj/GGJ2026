@@ -11,5 +11,6 @@ AssetOrigin:
   productId: 8105
   packageName: Toony Colors Pro 2
   packageVersion: 2.9.21
-  assetPath: Assets/JMO Assets/Toony Colors Pro/Documentation/Documentation Data/Anchors/stylized_specular.htm
+  assetPath: Assets/ExternalAssets/JMO Assets/Toony Colors Pro/Documentation/Documentation
+    Data/Anchors/stylized_specular.htm
   uploadId: 846626

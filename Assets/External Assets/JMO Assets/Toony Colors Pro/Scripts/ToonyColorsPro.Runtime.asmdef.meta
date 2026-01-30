@@ -10,5 +10,5 @@ AssetOrigin:
   productId: 8105
   packageName: Toony Colors Pro 2
   packageVersion: 2.9.21
-  assetPath: Assets/JMO Assets/Toony Colors Pro/Scripts/ToonyColorsPro.Runtime.asmdef
+  assetPath: Assets/ExternalAssets/JMO Assets/Toony Colors Pro/Scripts/ToonyColorsPro.Runtime.asmdef
   uploadId: 846626

@@ -14,5 +14,6 @@ AssetOrigin:
   productId: 8105
   packageName: Toony Colors Pro 2
   packageVersion: 2.9.21
-  assetPath: Assets/JMO Assets/Toony Colors Pro/Demo TCP2/Common Demo Assets/Scripts/TCP2_InputAbstraction.cs
+  assetPath: Assets/ExternalAssets/JMO Assets/Toony Colors Pro/Demo TCP2/Common Demo
+    Assets/Scripts/TCP2_InputAbstraction.cs
   uploadId: 846626

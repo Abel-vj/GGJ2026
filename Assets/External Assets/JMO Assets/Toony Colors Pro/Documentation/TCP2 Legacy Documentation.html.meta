@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 62668791628ca2642b4bcf66800672c4
+guid: 8a2f38e9cfffea64d9ceed104b516607
 TextScriptImporter:
   userData: 
   assetBundleName: 
@@ -9,5 +9,6 @@ AssetOrigin:
   productId: 8105
   packageName: Toony Colors Pro 2
   packageVersion: 2.9.21
-  assetPath: Assets/JMO Assets/Toony Colors Pro/Documentation/TCP2 Legacy Documentation.html
+  assetPath: Assets/ExternalAssets/JMO Assets/Toony Colors Pro/Documentation/TCP2
+    Legacy Documentation.html
   uploadId: 846626

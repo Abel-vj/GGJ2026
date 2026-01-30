@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: aef9a16fd5511a9448b9f9baa091a927
+timeCreated: 1468606233
+licenseType: Store
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 8105
+  packageName: Toony Colors Pro 2
+  packageVersion: 2.9.21
+  assetPath: Assets/ExternalAssets/JMO Assets/Toony Colors Pro/Shaders/Standard PBS/TCP2_Standard
+    PBS Outline (Specular).shader
+  uploadId: 846626
